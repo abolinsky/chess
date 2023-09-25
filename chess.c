@@ -111,6 +111,11 @@ bool IsValidPawnMove(int startX, int startY, int endX, int endY) {
     return false;
 }
 
+bool IsValidMove(ChessPiece piece, int startX, int startY, int endX, int endY) {
+    return piece.type == pawn && IsValidPawnMove(startX, startY, endX, endY);
+    // TODO: Validate other pieces
+}
+
 Vector2 GetBoardPosition(Vector2 mousePosition) {
     Vector2 boardPosition;
     boardPosition.x = (int)(mousePosition.x / SQUARE_SIZE);
@@ -124,12 +129,11 @@ void HandlePieces() {
 
         if (selectedPiece.x != -1 && selectedPiece.y != -1) {
             if (selectedPiece.x != clickedSquare.x || selectedPiece.y != clickedSquare.y) {
-                if (board[(int)selectedPiece.y][(int)selectedPiece.x].type == pawn) {
-                    if (IsValidPawnMove(selectedPiece.x, selectedPiece.y, clickedSquare.x, clickedSquare.y)) {
-                        board[(int)clickedSquare.y][(int)clickedSquare.x] = board[(int)selectedPiece.y][(int)selectedPiece.x];
-                        board[(int)selectedPiece.y][(int)selectedPiece.x] = (ChessPiece){.type = none};
-                        SwitchTurn();
-                    }
+                ChessPiece piece = board[(int)selectedPiece.y][(int)selectedPiece.x];
+                if (IsValidMove(piece, selectedPiece.x, selectedPiece.y, clickedSquare.x, clickedSquare.y)) {
+                    board[(int)clickedSquare.y][(int)clickedSquare.x] = board[(int)selectedPiece.y][(int)selectedPiece.x];
+                    board[(int)selectedPiece.y][(int)selectedPiece.x] = (ChessPiece){.type = none};
+                    SwitchTurn();
                 }
             }
             selectedPiece = (Vector2){ -1, -1 };
