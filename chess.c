@@ -169,7 +169,7 @@ int main(int argc, char** argv) {
     int screenWidth = BOARD_SIZE * SQUARE_SIZE;
     int screenHeight = BOARD_SIZE * SQUARE_SIZE;
 
-    InitWindow(screenWidth, screenHeight, "Chess with Raylib");
+    InitWindow(screenWidth, screenHeight, "Chess");
 
     Texture2D chessPiecesBlack = LoadTexture("sprites/BlackPieces_Wood.png");
     Texture2D chessPiecesWhite = LoadTexture("sprites/WhitePieces_Wood.png");
