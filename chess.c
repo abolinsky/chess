@@ -2,27 +2,56 @@
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
 
 #define BOARD_SIZE 8
 #define SQUARE_SIZE 80
 #define SPRITE_SIZE 16
 #define HIGHLIGHT_THICKNESS 7
+#define PROMOTION 2
+#define BUTTON_WIDTH 120
+#define BUTTON_HEIGHT 40
 
 enum PieceColor { white, black };
 enum PieceType { pawn, knight, rook, bishop, queen, king, none };
+enum MoveValidity { invalid, valid, capture, promotion };
 
 typedef struct {
-    Rectangle sourceRect;
+    Rectangle bounds;
+    const char* text;
+    Color color;
+} Button;
+
+Button retryButton = {{250, 240, BUTTON_WIDTH, BUTTON_HEIGHT}, "Retry", DARKGRAY};
+Button quitButton = {{250, 290, BUTTON_WIDTH, BUTTON_HEIGHT}, "Quit", DARKGRAY};
+
+typedef struct {
     enum PieceType type;
     enum PieceColor color;
 } ChessPiece;
 
 ChessPiece board[BOARD_SIZE][BOARD_SIZE];
 enum PieceColor turn = white;
-Vector2 selectedPiece = { -1, -1 };
+Vector2 selectedSquare = { -1, -1 };
+bool isGameOver = false;
+
+char startingLocations[BOARD_SIZE][BOARD_SIZE] = {
+    {'r','n','b','q','k','b','n','r'},
+    {'p','p','p','p','p','p','p','p'},
+    {' ',' ',' ',' ',' ',' ',' ',' '},
+    {' ',' ',' ',' ',' ',' ',' ',' '},
+    {' ',' ',' ',' ',' ',' ',' ',' '},
+    {' ',' ',' ',' ',' ',' ',' ',' '},
+    {'P','P','P','P','P','P','P','P'},
+    {'R','N','B','Q','K','B','N','R'}
+};
 
 void SwitchTurn() {
     turn = turn == white ? black : white;
+}
+
+Rectangle getPieceSourceRect(enum PieceType type) {
+    return (Rectangle){ (int)type * SPRITE_SIZE, 0, SPRITE_SIZE, SPRITE_SIZE };
 }
 
 ChessPiece CreatePiece(char type) {
@@ -37,21 +66,20 @@ ChessPiece CreatePiece(char type) {
     else if (type == 'q') piece.type = queen;
     else if (type == 'k') piece.type = king;
 
-    piece.sourceRect = (Rectangle){ (int)piece.type * SPRITE_SIZE, 0, SPRITE_SIZE, SPRITE_SIZE };
     return piece;
 }
 
-void PopulateBoard(char pieces[BOARD_SIZE][BOARD_SIZE]) {
+void PopulateBoard() {
     for (int y = 0; y < BOARD_SIZE; ++y) {
         for (int x = 0; x < BOARD_SIZE; ++x) {
-            board[y][x] = CreatePiece(pieces[y][x]);
+            board[y][x] = CreatePiece(startingLocations[y][x]);
         }
     }
 }
 
-void HighlightSelectedPiece() {
-    if (selectedPiece.x != -1 && selectedPiece.y != -1) {
-        DrawRectangleLinesEx((Rectangle){selectedPiece.x * SQUARE_SIZE, selectedPiece.y * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE}, HIGHLIGHT_THICKNESS, GOLD);
+void HighlightSelectedSquare() {
+    if (selectedSquare.x != -1 && selectedSquare.y != -1) {
+        DrawRectangleLinesEx((Rectangle){selectedSquare.x * SQUARE_SIZE, selectedSquare.y * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE}, HIGHLIGHT_THICKNESS, GOLD);
     }
 }
 
@@ -63,13 +91,13 @@ void DrawBoard() {
         }
     }
 
-    HighlightSelectedPiece();
+    HighlightSelectedSquare();
 }
 
 void DrawPiece(Texture2D pieces, ChessPiece piece, int x, int y) {
     Rectangle destRect = { x * SQUARE_SIZE, y * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE};
     Vector2 origin = { 0, 0 };
-    DrawTexturePro(pieces, piece.sourceRect, destRect, origin, 0.0f, WHITE);
+    DrawTexturePro(pieces, getPieceSourceRect(piece.type), destRect, origin, 0.0f, WHITE);
 }
 
 void DrawPieces(Texture2D whitePieces, Texture2D blackPieces) {
@@ -89,31 +117,130 @@ bool IsOppositeColor(ChessPiece piece1, ChessPiece piece2) {
     return (piece1.color != piece2.color);
 }
 
-bool IsValidPawnMove(int startX, int startY, int endX, int endY) {
-    int direction = (board[startY][startX].color == white) ? -1 : 1;
+enum MoveValidity IsValidPawnMove(Vector2 start, Vector2 end) {
+    int direction = (board[(int)start.y][(int)start.x].color == white) ? -1 : 1;
     
-    if (endY - startY == direction && endX == startX && board[endY][endX].type == none) {
-        return true;
+    if ((board[(int)start.y][(int)start.x].color == white && end.y == 0) ||
+        (board[(int)start.y][(int)start.x].color == black && end.y == 7)) {
+        return promotion;
     }
-    
-    if (abs(endY - startY) == 2 && endX == startX && board[endY][endX].type == none 
-        && (startY == 6 || startY == 1)) {
-        return true;
-    }
-    
-    if (endY - startY == direction && abs(endX - startX) == 1 
-        && board[endY][endX].type != none && IsOppositeColor(board[startY][startX], board[endY][endX])) {
-        return true;
-    }
-    
-    // TODO: Implement "en passant" and promotion
 
-    return false;
+    // TODO: Implement "en passant"
+
+    if (end.y - start.y == direction && end.x == start.x && board[(int)end.y][(int)end.x].type == none) {
+        return valid;
+    }
+    
+    if (fabsf(end.y - start.y) == 2 && end.x == start.x && board[(int)end.y][(int)end.x].type == none 
+        && (start.y == 6 || start.y == 1)) {
+        return valid;
+    }
+    
+    if (end.y - start.y == direction && fabsf(end.x - start.x) == 1 
+        && board[(int)end.y][(int)end.x].type != none && IsOppositeColor(board[(int)start.y][(int)start.x], board[(int)end.y][(int)end.x])) {
+        return capture;
+    }
+    
+    return invalid;
 }
 
-bool IsValidMove(ChessPiece piece, int startX, int startY, int endX, int endY) {
-    return piece.type == pawn && IsValidPawnMove(startX, startY, endX, endY);
-    // TODO: Validate other pieces
+enum MoveValidity IsValidRookMove(Vector2 start, Vector2 end) {
+    if (start.x != end.x && start.y != end.y) {
+        return invalid;
+    }
+
+    int stepX = (end.x > start.x) ? 1 : (end.x < start.x ? -1 : 0);
+    int stepY = (end.y > start.y) ? 1 : (end.y < start.y ? -1 : 0);
+
+    int x, y;
+    for (x = start.x + stepX, y = start.y + stepY; x != end.x || y != end.y; x += stepX, y += stepY) {
+        if (board[(int)y][(int)x].type != none) {
+            return invalid;
+        }
+    }
+
+    if (board[(int)end.y][(int)end.x].type != none) {
+        if (IsOppositeColor(board[(int)start.y][(int)start.x], board[(int)end.y][(int)end.x])) {
+            return capture;
+        } else {
+            return invalid;
+        }
+    } else {
+        return valid;
+    }
+}
+
+enum MoveValidity IsValidKnightMove(Vector2 start, Vector2 end) {
+    int dx = fabsf(end.x - start.x);
+    int dy = fabsf(end.y - start.y);
+
+    if ((dx == 2 && dy == 1) || (dx == 1 && dy == 2)) {
+        if (board[(int)end.y][(int)end.x].type == none) {
+            return valid;
+        } else if (IsOppositeColor(board[(int)start.y][(int)start.x], board[(int)end.y][(int)end.x])) {
+            return capture;
+        }
+    }
+    return invalid;
+}
+
+enum MoveValidity IsValidBishopMove(Vector2 start, Vector2 end) {
+    int dx = end.x - start.x;
+    int dy = end.y - start.y;
+
+    if (abs(dx) != abs(dy)) {
+        return invalid;
+    }
+
+    int stepX = (dx > 0) ? 1 : -1;
+    int stepY = (dy > 0) ? 1 : -1;
+
+    int x, y;
+    for (x = start.x + stepX, y = start.y + stepY; x != end.x; x += stepX, y += stepY) {
+        if (board[(int)y][(int)x].type != none) {
+            return invalid;
+        }
+    }
+
+    if (board[(int)end.y][(int)end.x].type != none) {
+        if (IsOppositeColor(board[(int)start.y][(int)start.x], board[(int)end.y][(int)end.x])) {
+            return capture;
+        } else {
+            return invalid;
+        }
+    } else {
+        return valid;
+    }
+}
+
+enum MoveValidity IsValidQueenMove(Vector2 start, Vector2 end) {
+    return IsValidRookMove(start, end) || IsValidBishopMove(start, end);
+}
+
+enum MoveValidity IsValidKingMove(Vector2 start, Vector2 end) {
+    int dx = fabsf(end.x - start.x);
+    int dy = fabsf(end.y - start.y);
+
+    if ((dx == 1 || dx == 0) && (dy == 1 || dy == 0)) {
+        if (board[(int)end.y][(int)end.x].type == none) {
+            return valid;
+        } else if (IsOppositeColor(board[(int)start.y][(int)start.x], board[(int)end.y][(int)end.x])) {
+            return capture;
+        }
+    }
+    return invalid;
+
+    // TODO: Implement castling
+}
+
+enum MoveValidity IsValidMove(ChessPiece* piece, Vector2 start, Vector2 end) {
+    if (piece->type == rook) { return IsValidRookMove(start, end); }
+    else if (piece->type == pawn) { return IsValidPawnMove(start, end); }
+    else if (piece->type == knight) { return IsValidKnightMove(start, end); }
+    else if (piece->type == bishop) { return IsValidBishopMove(start, end); }
+    else if (piece->type == queen) { return IsValidQueenMove(start, end); }
+    else if (piece->type == king) { return IsValidKingMove(start, end); }
+    return invalid;
 }
 
 Vector2 GetBoardPosition(Vector2 mousePosition) {
@@ -126,24 +253,40 @@ Vector2 GetBoardPosition(Vector2 mousePosition) {
 void HandlePieces() {
     if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
         Vector2 clickedSquare = GetBoardPosition(GetMousePosition());
+        ChessPiece* clickedPiece = &board[(int)clickedSquare.y][(int)clickedSquare.x];
+        if (clickedPiece->type != none && turn == clickedPiece->color) {
+            selectedSquare = clickedSquare;
+        } else if (selectedSquare.x != -1 && selectedSquare.y != -1) {
+            if (selectedSquare.x != clickedSquare.x || selectedSquare.y != clickedSquare.y) {
+                ChessPiece* selectedPiece = &board[(int)selectedSquare.y][(int)selectedSquare.x];
+                enum MoveValidity result = IsValidMove(selectedPiece, selectedSquare, clickedSquare);
+                if (result) {
+                    if (clickedPiece->type == king) {
+                        isGameOver = true;
+                        return;
+                    }
 
-        if (selectedPiece.x != -1 && selectedPiece.y != -1) {
-            if (selectedPiece.x != clickedSquare.x || selectedPiece.y != clickedSquare.y) {
-                ChessPiece piece = board[(int)selectedPiece.y][(int)selectedPiece.x];
-                if (IsValidMove(piece, selectedPiece.x, selectedPiece.y, clickedSquare.x, clickedSquare.y)) {
-                    board[(int)clickedSquare.y][(int)clickedSquare.x] = board[(int)selectedPiece.y][(int)selectedPiece.x];
-                    board[(int)selectedPiece.y][(int)selectedPiece.x] = (ChessPiece){.type = none};
+                    *clickedPiece = *selectedPiece;
+                    *selectedPiece = (ChessPiece){.type = none};
+
+                    if (result == promotion) {
+                        // TODO: Present a choice menu
+                        clickedPiece->type = queen;
+                    }
+
+                    if (result == capture) {
+                        // TODO: Something on capture
+                    }
+
                     SwitchTurn();
                 }
             }
-            selectedPiece = (Vector2){ -1, -1 };
-        } else if (board[(int)clickedSquare.y][(int)clickedSquare.x].type != none && turn == board[(int)clickedSquare.y][(int)clickedSquare.x].color) {
-            selectedPiece = clickedSquare;
+            selectedSquare = (Vector2){ -1, -1 };
         }
     }
 }
 
-bool LoadBoard(const char *filename, char startingLocations[BOARD_SIZE][BOARD_SIZE]) {
+bool LoadBoard(const char *filename) {
     FILE *file = fopen(filename, "r");
     if (!file) {
         return false;
@@ -167,6 +310,28 @@ bool LoadBoard(const char *filename, char startingLocations[BOARD_SIZE][BOARD_SI
     return true;
 }
 
+void HandleGameEnd() {
+    if (isGameOver) {
+        ClearBackground(RAYWHITE);
+
+        DrawText("GAME OVER", 260, 180, 40, GOLD);
+
+        DrawRectangleRec(retryButton.bounds, retryButton.color);
+        DrawText(retryButton.text, retryButton.bounds.x + 20, retryButton.bounds.y + 10, 20, BLACK);
+
+        DrawRectangleRec(quitButton.bounds, quitButton.color);
+        DrawText(quitButton.text, quitButton.bounds.x + 20, quitButton.bounds.y + 10, 20, BLACK);
+        
+        if (CheckCollisionPointRec(GetMousePosition(), retryButton.bounds) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+            isGameOver = false;
+            PopulateBoard();
+        } else if (CheckCollisionPointRec(GetMousePosition(), quitButton.bounds) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+            CloseWindow();
+            exit(0);
+        }
+    }
+}
+
 int main(int argc, char** argv) {
     int screenWidth = BOARD_SIZE * SQUARE_SIZE;
     int screenHeight = BOARD_SIZE * SQUARE_SIZE;
@@ -178,21 +343,10 @@ int main(int argc, char** argv) {
 
     SetTargetFPS(60);
 
-    char startingLocations[BOARD_SIZE][BOARD_SIZE] = {
-        {'r','n','b','q','k','b','n','r'},
-        {'p','p','p','p','p','p','p','p'},
-        {' ',' ',' ',' ',' ',' ',' ',' '},
-        {' ',' ',' ',' ',' ',' ',' ',' '},
-        {' ',' ',' ',' ',' ',' ',' ',' '},
-        {' ',' ',' ',' ',' ',' ',' ',' '},
-        {'P','P','P','P','P','P','P','P'},
-        {'R','N','B','Q','K','B','N','R'}
-    };
-
     if (argc == 2) {
-        LoadBoard(argv[1], startingLocations);
+        LoadBoard(argv[1]);
     }
-    PopulateBoard(startingLocations);
+    PopulateBoard();
 
     while (!WindowShouldClose()) {
         BeginDrawing();
@@ -200,6 +354,7 @@ int main(int argc, char** argv) {
         DrawBoard();
         DrawPieces(chessPiecesWhite, chessPiecesBlack);
         HandlePieces();
+        HandleGameEnd();
         EndDrawing();
     }
 
