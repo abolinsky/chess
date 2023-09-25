@@ -13,7 +13,6 @@ enum PieceType { pawn, knight, rook, bishop, queen, king, none };
 
 typedef struct {
     Rectangle sourceRect;
-    bool isAlive;
     enum PieceType type;
     enum PieceColor color;
 } ChessPiece;
@@ -27,7 +26,7 @@ void SwitchTurn() {
 }
 
 ChessPiece CreatePiece(char type) {
-    ChessPiece piece = (ChessPiece) { .isAlive = true, .type = none };
+    ChessPiece piece = (ChessPiece) { .type = none };
     piece.color = isupper(type) ? white : black;
     type = tolower(type);
 
