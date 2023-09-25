@@ -18,8 +18,8 @@ typedef struct {
 } ChessPiece;
 
 ChessPiece board[BOARD_SIZE][BOARD_SIZE];
-
 enum PieceColor turn = white;
+Vector2 selectedPiece = { -1, -1 };
 
 void SwitchTurn() {
     turn = turn == white ? black : white;
@@ -49,11 +49,9 @@ void PopulateBoard(char pieces[BOARD_SIZE][BOARD_SIZE]) {
     }
 }
 
-Vector2 selectedPiece = { -1, -1 };
-
-void HighlightSelectedPiece(int x, int y) {
-    if (selectedPiece.x == x && selectedPiece.y == y) {
-        DrawRectangleLinesEx((Rectangle){x * SQUARE_SIZE, y * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE}, HIGHLIGHT_THICKNESS, GOLD);
+void HighlightSelectedPiece() {
+    if (selectedPiece.x != -1 && selectedPiece.y != -1) {
+        DrawRectangleLinesEx((Rectangle){selectedPiece.x * SQUARE_SIZE, selectedPiece.y * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE}, HIGHLIGHT_THICKNESS, GOLD);
     }
 }
 
@@ -62,9 +60,10 @@ void DrawBoard() {
         for (int x = 0; x < BOARD_SIZE; ++x) {
             Color squareColor = ((x + y) % 2 == 0) ? LIGHTGRAY : DARKGREEN;
             DrawRectangle(x * SQUARE_SIZE, y * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE, squareColor);
-            HighlightSelectedPiece(x, y);
         }
     }
+
+    HighlightSelectedPiece();
 }
 
 void DrawPiece(Texture2D pieces, ChessPiece piece, int x, int y) {
